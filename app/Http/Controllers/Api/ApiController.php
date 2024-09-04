@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Models\Role;
 use App\Models\User;
+use App\Models\UserRole;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -70,13 +72,32 @@ class ApiController extends Controller
             "name" => "required|string",
             "email"=> "required|string|email|unique:users",
             "password" => "required|confirmed", //password_confirmation
+             // Profil fields are now optional
+            "first_name" => "nullable|string",
+            "last_name" => "nullable|string",
+            "phone_number" => "nullable|string",
+            "address" => "nullable|string",
         ]);
         // User model to save user in database
-        User::create([
+        $user = User::create([
             "name" => $request->name,
             "email" => $request->email,
             "password" => bcrypt($request->password),
         ]);
+
+        // Create profile for the user if profile data is provided
+        if ($request->has('first_name') || $request->has('last_name') || $request->has('phone_number') || $request->has('address')) {
+            Profile::create([
+                "first_name" => $request->input('first_name', ''),
+                "last_name" => $request->input('last_name', ''),
+                "phone_number" => $request->input('phone_number', ''),
+                "address" => $request->input('address', ''),
+                "user_id" => $user->id,
+            ]);
+        }
+
+        // Assign default role 'fidèle'
+        $user->assignRole('Fidele');
 
         // Response
         return response()->json([
@@ -131,44 +152,46 @@ class ApiController extends Controller
      *      @OA\Response(response=404, description="Resource Not Found"),
      * )
      */
-    public function login(Request $request){
+    public function login(Request $request)
+    {
         // Validation
         $request->validate([
-            "email"=> "required|string|email",
-            "password" => "required", 
+            'email' => 'required|string|email',
+            'password' => 'required',
         ]);
-
-        // Check user by email
-        $user = User::where("email", $request->email)->first();
-
-        // Check user by password
-        if(!empty($user)){
-            if (Hash::check($request->password, $user->password)) {
-                // Login is ok 
-                $tokenInfo = $user->createToken("myToken");
-                $token = $tokenInfo->plainTextToken; // Token value
-                $tokenId = $tokenInfo->accessToken->id; // Token ID
-
-                return response()->json([
-                    "status" => true,
-                    "message" => "Login successful",
-                    "token" => $token,
-                    "tokenId" => $tokenId
-                ]);
-            } else {
-                return response()->json([
-                    "status" => false,
-                    "message" => "Password didn't match."
-                ]);
-            }
+    
+        // Vérifier l'utilisateur par email
+        $user = User::where('email', $request->email)->first();
+    
+        // Vérifier le mot de passe de l'utilisateur
+        if ($user && Hash::check($request->password, $user->password)) {
+            // Connexion réussie
+            $tokenInfo = $user->createToken('myToken');
+            $token = $tokenInfo->plainTextToken; // Valeur du token
+            $tokenId = $tokenInfo->accessToken->id; // ID du token
+    
+            // Récupérer le rôle
+            $role = $user->roles->pluck('name')->first(); // Assurez-vous que 'name' est la colonne pour le nom du rôle
+    
+            // Récupérer les permissions
+            $permissions = $user->getUserPermissions(); // Utiliser la méthode que vous avez ajoutée
+    
+            return response()->json([
+                'status' => true,
+                'message' => 'Login successful',
+                'token' => $token,
+                'tokenId' => $tokenId,
+                'role' => $role,
+                'permissions' => $permissions, // Ajouter les permissions à la réponse
+            ]);
         } else {
             return response()->json([
-                "status" => false,
-                "message" => "Invalid credentials"
+                'status' => false,
+                'message' => 'Invalid credentials',
             ]);
         }
     }
-
+    
     // Profile (GET - Auth Token)
     /**
      * @OA\Get(

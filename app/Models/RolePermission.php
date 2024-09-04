@@ -12,11 +12,15 @@ class RolePermission extends Model
     use HasFactory;
 
     protected $fillable = ['role_id', 'permission_id'];
+    protected $table = 'role_permissions';
+
 
     public function role()
     {
         return $this->belongsTo(Role::class);
     }
+
+
 
     public function permission()
     {
